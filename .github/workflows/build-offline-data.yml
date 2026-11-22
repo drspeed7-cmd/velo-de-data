@@ -29,6 +29,11 @@ jobs:
           node-version: '20'
 
       # === 1. VECTOR TILES (MBTiles via Planetiler) ===
+      - name: Download NRW OSM PBF
+        run: |
+          curl -L -o nordrhein-westfalen.osm.pbf \
+            "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf"
+
       - name: Download Planetiler
         run: |
           curl -L -o planetiler.jar \
@@ -37,8 +42,7 @@ jobs:
       - name: Build NRW MBTiles
         run: |
           java -Xmx4g -jar planetiler.jar \
-            --download \
-            --area=nordrhein-westfalen \
+            --osm-path=nordrhein-westfalen.osm.pbf \
             --output=nrw.mbtiles \
             --languages=de \
             --maxzoom=14
@@ -60,9 +64,7 @@ jobs:
       - name: Build search database
         run: |
           pip install osmium
-          curl -L -o nrw.osm.pbf \
-            "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf"
-          python3 tools/build-search-db.py nrw.osm.pbf nrw.db
+          python3 tools/build-search-db.py nordrhein-westfalen.osm.pbf nrw.db
 
       # === 5. BROUTER ROUTING DATA ===
       - name: Download BRouter segments for NRW

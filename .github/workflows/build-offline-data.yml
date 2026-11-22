@@ -1,0 +1,117 @@
+name: Build Offline Data (NRW)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-offline-data.yml'
+      - 'tools/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # === 1. VECTOR TILES (MBTiles via Planetiler) ===
+      - name: Download Planetiler
+        run: |
+          curl -L -o planetiler.jar \
+            "https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar"
+
+      - name: Build NRW MBTiles
+        run: |
+          java -Xmx4g -jar planetiler.jar \
+            --download \
+            --area=nordrhein-westfalen \
+            --output=nrw.mbtiles \
+            --languages=de \
+            --maxzoom=14
+
+      # === 2. FONT GLYPHS (PBF files for MapLibre) ===
+      - name: Generate font glyphs
+        run: |
+          npm install @maplibre/font-maker
+          mkdir -p fonts
+          curl -L -o NotoSans-Regular.ttf \
+            "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/unhinted/ttf/NotoSans-Regular.ttf"
+          npx font-maker NotoSans-Regular.ttf --output fonts/
+
+      # === 3. SPRITES ===
+      - name: Generate sprites
+        run: node tools/generate-sprites.js
+
+      # === 4. SEARCH DATABASE (SQLite + FTS5) ===
+      - name: Build search database
+        run: |
+          pip install osmium
+          curl -L -o nrw.osm.pbf \
+            "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf"
+          python3 tools/build-search-db.py nrw.osm.pbf nrw.db
+
+      # === 5. BROUTER ROUTING DATA ===
+      - name: Download BRouter segments for NRW
+        run: |
+          mkdir -p routing/segments
+          curl -L -o routing/segments/E5_N50.rd5 \
+            "https://brouter.de/brouter/segments4/E5_N50.rd5"
+          ls -lh routing/segments/
+
+      # === 6. PACKAGE AND RELEASE ===
+      - name: Package offline data
+        run: |
+          mkdir -p offline-package
+          mv nrw.mbtiles offline-package/
+          mv nrw.db offline-package/
+          tar -czf offline-package/fonts.tar.gz -C fonts .
+          tar -czf offline-package/sprites.tar.gz -C sprites .
+          tar -czf offline-package/routing-nrw.tar.gz -C routing .
+          # Checksums
+          cd offline-package
+          sha256sum * > checksums.txt
+          echo "=== Package contents ==="
+          ls -lh
+
+      - name: Upload as release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-data
+          name: "Offline-Daten NRW"
+          body: |
+            Offline-Datenpaket für Nordrhein-Westfalen.
+
+            **Enthält:**
+            - `nrw.mbtiles` – Vektor-Tiles für die Kartenanzeige
+            - `nrw.db` – Suchdatenbank (SQLite/FTS5) mit Orten, Adressen, Fahrrad-POIs
+            - `routing-nrw.tar.gz` – BRouter-Segmentdateien für Offline-Routing
+            - `fonts.tar.gz` – Schriften (Noto Sans) für Kartenbeschriftung
+            - `sprites.tar.gz` – Symbole für den Kartenstil
+            - `checksums.txt` – SHA256-Prüfsummen
+
+            Generiert aus OpenStreetMap-Daten (ODbL-Lizenz).
+          files: |
+            offline-package/nrw.mbtiles
+            offline-package/nrw.db
+            offline-package/routing-nrw.tar.gz
+            offline-package/fonts.tar.gz
+            offline-package/sprites.tar.gz
+            offline-package/checksums.txt
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

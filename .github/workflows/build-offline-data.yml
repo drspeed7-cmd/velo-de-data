@@ -51,11 +51,10 @@ jobs:
       # === 2. FONT GLYPHS (PBF files for MapLibre) ===
       - name: Generate font glyphs
         run: |
-          npm install @maplibre/font-maker
-          mkdir -p fonts
+          npm install fontnik
           curl -L -o NotoSans-Regular.ttf \
             "https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/unhinted/ttf/NotoSans-Regular.ttf"
-          npx font-maker NotoSans-Regular.ttf --output fonts/
+          node tools/generate-fonts.js NotoSans-Regular.ttf fonts "Noto Sans Regular"
 
       # === 3. SPRITES ===
       - name: Generate sprites

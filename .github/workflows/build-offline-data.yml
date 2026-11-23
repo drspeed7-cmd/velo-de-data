@@ -42,6 +42,7 @@ jobs:
       - name: Build NRW MBTiles
         run: |
           java -Xmx4g -jar planetiler.jar \
+            --download \
             --osm-path=nordrhein-westfalen.osm.pbf \
             --output=nrw.mbtiles \
             --languages=de \
